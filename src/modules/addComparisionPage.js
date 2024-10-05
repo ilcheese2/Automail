@@ -373,7 +373,7 @@ function addComparisionPage(){
 			}
 			let showID = create("td",false,false,false,"max-width:250px;");
 			create("a","newTab",show.title,showID)
-				.href = "/" + type + "/" + show.id + "/" + safeURL(show.title);
+				.href = show.url;
 			let showAverage = create("td");
 			if(show.digest !== null){
 				let fractional = show.digest % 1;
@@ -779,7 +779,8 @@ function addComparisionPage(){
 					numberWatched: mediaEntry.scoreRaw ? 1 : 0,
 					favourite: Array(userIndeks).fill(false),
 					averageScore: mediaEntry.media.averageScore,
-					popularity: mediaEntry.media.popularity
+					popularity: mediaEntry.media.popularity,
+					url: mediaEntry.media.siteUrl
 				};
 				entry.score.push(mediaEntry.scoreRaw || null);
 				entry.scorePersonal.push(mediaEntry.score || null);
@@ -903,7 +904,7 @@ function addComparisionPage(){
 						native: show.node.title.ja, // chinese show had ja field
 						english: show.node.alternative_titles.en
 					},
-
+					siteUrl: `https://myanimelist.net/anime/${show.node.id}/`
 				};
 				data.MediaListCollection.lists[0].entries.push({
 					media: media,
@@ -968,6 +969,7 @@ fragment mediaListEntry on MediaList{
 		averageScore
 		popularity
 		countryOfOrigin
+		siteUrl
 	}
 }`
 

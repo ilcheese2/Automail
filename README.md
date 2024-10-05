@@ -1,3 +1,9 @@
+Popularity and Mean score will inconsistently use data from both MAL and Anilist.
+
+# Using
+Compare with any existing Anilist user, and then use `Add Mal`
+
+
 # Automail
 Extra parts for anilist.co
 

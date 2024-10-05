@@ -558,6 +558,22 @@ function addComparisionPage(){
 				setTimeout(function(){//prevent double click, but don't soft lock on lookup failure
 					if(addButton.disabled){
 						addButton.disabled = false
+						addMALButton.innerText = translate("$button_add");
+					}
+				},5000)
+			}
+		};
+		let addMALButton = create("button",["button","hohButton"],"Add MAL",addCel,"margin-top:0px;");
+		addMALButton.style.cursor = "pointer";
+		addMALButton.onclick = function(){
+			if(addInput.value !== ""){
+				addUser(addInput.value, null, true);
+				addMALButton.innerText = "...";
+				addMALButton.disabled = true;
+				setTimeout(function(){//prevent double click, but don't soft lock on lookup failure
+					if(addMALButton.disabled){
+						addMALButton.disabled = false
+						addMALButton.innerText = translate("Add MAL");
 					}
 				},5000)
 			}
@@ -694,7 +710,7 @@ function addComparisionPage(){
 		table.appendChild(userRow);
 		table.appendChild(headerRow)
 	};
-	let addUser = async function(userName,paramDemand){
+	let addUser = async function(userName,paramDemand, isMAL){
 		let handleData = function(data,cached){
 			users.push({
 				name: userName,
@@ -703,7 +719,7 @@ function addComparisionPage(){
 				system: data.data.MediaListCollection.user.mediaListOptions.scoreFormat,
 				status: false
 			});
-			let list = returnList(data,true);
+			let list = returnList(data,false);
 			if(!cached){
 				let averageSum = 0;
 				let averageCount = 0;
@@ -739,11 +755,15 @@ function addComparisionPage(){
 			if(shows.length){
 				userIndeks = shows[0].score.length
 			}
-			let favs = data.data.MediaListCollection.user.favourites.fav.nodes.concat(
-				data.data.MediaListCollection.user.favourites.fav2.nodes
-			).concat(
-				data.data.MediaListCollection.user.favourites.fav3.nodes
-			).map(media => media.id);
+
+			let favs = []
+			if (data.data.MediaListCollection.user.favourites) {
+					favs = data.data.MediaListCollection.user.favourites.fav.nodes.concat(
+					data.data.MediaListCollection.user.favourites.fav2.nodes
+				).concat(
+					data.data.MediaListCollection.user.favourites.fav3.nodes
+				).map(media => media.idMal);
+			}
 			let createEntry = function(mediaEntry){
 				let entry = {
 					id: mediaEntry.mediaId,
@@ -823,6 +843,79 @@ function addComparisionPage(){
 			drawTable();
 			changeUserURL()
 		};
+		let convertMAL = function(malData){
+			let data = {
+				MediaListCollection: {
+					lists: [
+						{entries: []}
+					],
+					user: {
+						mediaListOptions: {
+							scoreFormat: "POINT_10"
+						},
+						id: -1,
+						avatar: {
+							medium: "https://dzinejs.lv/wp-content/plugins/lightbox/images/No-image-found.jpg"
+						},
+						favourites: {
+							fav: {
+								nodes: []
+							},
+							fav2: {
+								nodes: []
+							},
+							fav3: {
+								nodes: []
+							}
+						}
+					},
+				},
+				errors: null
+			};
+			malData.data.forEach((show => {
+				const MAL_TO_ANILIST_FORMAT = {
+					"unknown": "TV",
+					"tv": "TV",
+					"ova": "OVA",
+					"movie": "MOVIE",
+					"special": "SPECIAL",
+					"ona": "ONA",
+					"music": "MUSIC"
+				};
+				const MAL_TO_ANILIST_STATUS = {
+					"watching": "CURRENT",
+					"completed": "COMPLETED",
+					"on_hold": "PAUSED",
+					"dropped": "DROPPED",
+					"plan_to_watch": "PLANNING"
+				};
+				
+				const media = {
+					averageScore: (show.node.mean * 10).toFixed() * 1.0,
+					chapters: null, // no such thing
+					countryOfOrigin: "JP",
+					episodes: show.node.num_episodes,
+					format: MAL_TO_ANILIST_FORMAT[show.node.media_type],
+					idMal: show.node.id,
+					popularity: show.node.num_list_users,
+					title: {
+						romaji: show.node.title,
+						native: show.node.title.ja, // chinese show had ja field
+						english: show.node.alternative_titles.en
+					},
+
+				};
+				data.MediaListCollection.lists[0].entries.push({
+					media: media,
+					mediaId: show.node.id,
+					progress: show.list_status.num_episodes_watched,
+					score: show.list_status.score,
+					status: show.list_status.is_rewatching ? "REPEATING" : MAL_TO_ANILIST_STATUS[show.list_status.status]
+				});
+				
+			}));
+			return {data: data};
+		};
 		if(hasOwn(listCache, userName)){
 			handleData(listCache[userName],true)
 		}
@@ -843,17 +936,17 @@ query($name: String, $listType: MediaType){
 			favourites{
 				fav:${type.toLowerCase()}(page:1){
 					nodes{
-						id
+						idMal
 					}
 				}
 				fav2:${type.toLowerCase()}(page:2){
 					nodes{
-						id
+						idMal
 					}
 				}
 				fav3:${type.toLowerCase()}(page:3){
 					nodes{
-						id
+						idMal
 					}
 				}
 			}
@@ -867,6 +960,7 @@ fragment mediaListEntry on MediaList{
 	progress
 	score
 	media{
+		idMal
 		episodes
 		chapters
 		format
@@ -876,9 +970,61 @@ fragment mediaListEntry on MediaList{
 		countryOfOrigin
 	}
 }`
-			const data = await anilistAPI(listQuery, {
-				variables: {name:userName,listType:type.toUpperCase()}
-			})
+
+			let data = null;
+			let request = { 
+				url : `https://api.myanimelist.net/v2/users/${userName}/animelist?limit=100&fields=list_status,num_episodes,media_type,alternative_titles,mean,num_list_users`,
+				headers: {
+					  "X-MAL-CLIENT-ID":"b7370c0364d21f82f91aef2531b6f275"
+				}
+			};
+
+			if (isMAL) {
+				let response = await GM.xmlHttpRequest(request).catch(e => console.error(e));
+				if (response.status != 200) {
+					return;
+				}
+				let curr = JSON.parse(response.responseText);
+				data = curr;
+				while (curr.paging.next) {
+					request.url = curr.paging.next;
+					response = await GM.xmlHttpRequest(request).catch(e => console.error(e));
+					if (response.status != 200) {
+						break;
+					}
+					curr = JSON.parse(response.responseText);
+					data.data = data.data.concat(curr.data);
+				}
+				data = convertMAL(data);
+
+				const response2 = await GM.xmlHttpRequest({ 
+					url : `https://api.jikan.moe/v4/users/${userName}/`,
+				}).catch(e => console.error(e));
+				if (response2.status == 200) {
+					const profile = JSON.parse(response2.responseText);
+					data.data.MediaListCollection.user.id = profile.data.mal_id;
+					if (profile.data.images.jpg) {
+						data.data.MediaListCollection.user.avatar.medium = profile.data.images.jpg.image_url;
+					}	
+				}
+
+				const response3 = await GM.xmlHttpRequest({ 
+					url : `https://api.jikan.moe/v4/users/${userName}/favorites`,
+				}).catch(e => console.error(e));
+				if (response3.status == 200) {
+					const favorites = JSON.parse(response3.responseText);
+					favorites.data.anime.forEach(ani => {
+						data.data.MediaListCollection.user.favourites.fav.nodes.push({ id: ani.mal_id})
+					});
+
+				}
+			}
+			else {
+				data = await anilistAPI(listQuery, {
+					variables: {name:userName,listType:type.toUpperCase()}
+				})
+			}
+
 			if(data.errors){
 				return
 			}

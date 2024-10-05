@@ -747,6 +747,9 @@ function returnList(_list,skipProcessing){
 	else {
 		retl = list.data.MediaListCollection.lists.map(list => {
 			return list.entries.map(entry => {
+				if (entry.media.idMal) {
+					entry.mediaId = entry.media.idMal;
+				}
 				entry.isCustomList = list.isCustomList;
 				if(entry.isCustomList){
 					entry.listLocations = [list.name]
